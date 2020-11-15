@@ -1,0 +1,120 @@
+---
+title: "Practical Machine Learning"
+author: "Bamidele Tella"
+date: "9/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Executive Summary
+This project goal is to predict the manner in which a group of enthusiasts, who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks, carried out the exercises. The data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants will be used for prediction. The "classe" variable in the training set is used as outcome for the prediction and the other variables were used to predict. This report describes how different models was built, how the testing set derived from the training set was used to confirm the accuracy of each model. The report also shows the expected out of sample error, and why the choices made, were made. Finally, the prediction model with the highest accuracy would used to predict 20 different test cases from the validation set.
+
+# Analysis
+## Loading Required Library Packages
+The required Library packages for analysis was loaded into R.
+```{r message=FALSE, warning=FALSE}
+library(caret)
+library(rpart)
+library(randomForest)
+library(rattle)
+library(gbm)
+library(corrplot)
+```
+
+## Data Set Download
+First, the data set is downloaded and stored in vector variables which is divided into training data and the validation data of 20 cases.
+```{r}
+if(!file.exists("./DataDownload")){dir.create("./DataDownload")}
+fileUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(fileUrl, destfile = "./DataDownload/trainingdataset.csv")
+trainingData = read.csv("./DataDownload/trainingdataset.csv")
+
+if(!file.exists("./DataDownload")){dir.create("./DataDownload")}
+fileUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+download.file(fileUrl, destfile = "./DataDownload/testingdataset.csv")
+testingData = read.csv("./DataDownload/testingdataset.csv")
+```
+
+# Cleaning and Analysis of Data Set
+Next, we remove columns that are not needed for prediction due to the availability of NAs, or due to their over-fitting tendencies.
+```{r}
+training = trainingData[,colSums(is.na(trainingData))==0]
+validation = testingData[,colSums(is.na(testingData))==0]
+training = training[,-c(1:7)]
+validation = validation[,-c(1:7)]
+dim(training)
+dim(validation)
+```
+
+Next, the training data set is divided into training set and test sat that would be used to design the prediction model. 
+```{r}
+set.seed(123)
+intrain = createDataPartition(training$classe,p=0.7,list=F)
+trainData = training[intrain,]
+testData = training[-intrain,]
+```
+
+Next, we identify and remove columns with no variability to avoid error in prediction.
+```{r}
+nzv = nearZeroVar(trainData)
+trainData = trainData[,-nzv]
+testData = testData[,-nzv]
+dim(trainData)
+dim(testData)
+```
+
+## Correlation Plot
+Next we plot the correlation between the different variables to have a clearer view of the effect of each variable on another.
+```{r}
+cor_plot = cor(trainData[,-53])
+corrplot(cor_plot,order = "FPC", method = "color",type="upper",tl.cex=0.8,tl.col = rgb(0,0,0))
+```
+
+# Models
+## Prediction Tree Model
+First, the prediction with tree method is used, which iteratively split variable groups,and analyses each group's homogeneity.
+```{r message=FALSE, warning=FALSE}
+set.seed(1234)
+treemod = rpart(classe~.,data=trainData,method="class") 
+fancyRpartPlot(treemod)
+treepred = predict(treemod, testData, type="class")
+treeconfmat = confusionMatrix(treepred,as.factor(testData$classe))
+treeconfmat
+plot(treeconfmat$table,col=treeconfmat$byClass,main=paste("Decision Tree Accuracy =", round(treeconfmat$overall["Accuracy"],4)))
+```
+
+## Random Forest Model
+This method takes a resample of the observed data from the training data set and builds a regression tree on it, then the new outcome of the classification tree is resampled and reclassified.
+```{r warning=FALSE}
+trcontrol = trainControl(method = "cv",number = 3,verboseIter = F)
+rfmod = train(classe~.,data=trainData,method="rf",trControl=trcontrol)
+rfpred = predict(rfmod,testData)
+RFconfmat = confusionMatrix(rfpred,as.factor(testData$classe))
+RFconfmat
+plot(RFconfmat$table,col=RFconfmat$byClass,main=paste("Random Forest Accuracy =",round(RFconfmat$overall["Accuracy"],4)))
+```
+
+## Generalized Boosting Model
+This method takes a lot of weak predictors and utilizes each predictor's strength, building them up to become a strong predictor.
+```{r message=FALSE, warning=FALSE}
+trcontrol2 = trainControl(method="repeatedcv",number = 5, repeats = 1)
+gbmfit = train(classe~., data=trainData, method="gbm", trControl=trcontrol2,verbose=F)
+gbmfit$finalModel
+gbmpred = predict(gbmfit, testData)
+gbmconfmat = confusionMatrix(gbmpred, as.factor(testData$classe))
+gbmconfmat
+plot(gbmconfmat$table,col=gbmconfmat$byClass,main=paste("Generalized Boosted Model Accuracy =",round(gbmconfmat$overall["Accuracy"],4)))
+```
+
+## Validation Data Set Prediction
+From the model plots, it is seen that the random forest method has the highest accuracy of prediction. It is then used to predict the outcome of the validation data set.
+```{r}
+predict(rfmod, validation)
+```
+
+
+
+
+
